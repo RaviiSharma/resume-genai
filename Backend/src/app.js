@@ -12,22 +12,22 @@ app.use(cookieParser());
 
 const allowedOrigins = [
   "http://localhost:5173",
-  process.env.CLIENT_URL,
+  process.env.CLIENT_URL?.replace(/\/$/, ""),
 ];
 
-console.log("Allowed Origins:", allowedOrigins);
-
 app.use(cors({
-  origin: function (origin, callback) {
-    console.log("Incoming Origin:", origin);
-
+  origin(origin, callback) {
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.includes(origin)) {
+    const normalizedOrigin = origin.replace(/\/$/, "");
+
+    if (allowedOrigins.includes(normalizedOrigin)) {
       return callback(null, true);
     }
 
-    console.log("Blocked Origin:", origin);
+    console.log("Allowed:", allowedOrigins);
+    console.log("Incoming:", normalizedOrigin);
+
     callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
