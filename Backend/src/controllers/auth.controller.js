@@ -55,6 +55,7 @@ async function registerUserController(req, res) {
             email: user.email
         }
     })
+    console.log('User registered successfully')
 
 }
 
