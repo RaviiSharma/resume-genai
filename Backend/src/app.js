@@ -15,19 +15,23 @@ const allowedOrigins = [
   process.env.CLIENT_URL,
 ];
 
+console.log("Allowed Origins:", allowedOrigins);
+
 app.use(cors({
   origin: function (origin, callback) {
+    console.log("Incoming Origin:", origin);
+
     if (!origin) return callback(null, true);
 
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
-    return callback(new Error("Not allowed by CORS"));
+    console.log("Blocked Origin:", origin);
+    callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
 }));
-
 /** require all the routes here  */
 const authRouter = require("./routes/auth.routes");
 const interviewRouter = require('./routes/interview.routes')
