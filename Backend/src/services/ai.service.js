@@ -3,6 +3,7 @@ const { z } = require("zod");
 const { zodToJsonSchema } = require("zod-to-json-schema");
 const puppeteer = require("puppeteer");
 
+
 const ai = new GoogleGenAI({
   apiKey: process.env.GOOGLE_GENAI_API_KEY,
 });
@@ -134,11 +135,16 @@ return validated;
 }
 
 async function generatePdfFromHtml(htmlContent) {
-  const browser = await puppeteer.launch({
+
+  console.log("Chrome Path:", puppeteer.executablePath());
+
+const browser = await puppeteer.launch({
+  executablePath: puppeteer.executablePath(),
   headless: true,
   args: [
     "--no-sandbox",
     "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
   ],
 });
     const page = await browser.newPage();
