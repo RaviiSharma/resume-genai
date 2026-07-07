@@ -3,7 +3,6 @@ const { z } = require("zod");
 const { zodToJsonSchema } = require("zod-to-json-schema");
 const puppeteer = require("puppeteer");
 
-
 const ai = new GoogleGenAI({
   apiKey: process.env.GOOGLE_GENAI_API_KEY,
 });
@@ -29,7 +28,8 @@ const interviewReportSchema = z.object({
             "How to answer this question, what points to cover, what approach to take etc.",
           ),
       }),
-    ).min(5)
+    )
+    .min(5)
     .describe(
       "Technical questions that can be asked in the interview along with their intention and how to answer them",
     ),
@@ -48,7 +48,8 @@ const interviewReportSchema = z.object({
             "How to answer this question, what points to cover, what approach to take etc.",
           ),
       }),
-    ).min(3)
+    )
+    .min(3)
     .describe(
       "Behavioral questions that can be asked in the interview along with their intention and how to answer them",
     ),
@@ -62,7 +63,8 @@ const interviewReportSchema = z.object({
             "The severity of this skill gap, i.e. how important is this skill for the job and how much it can impact the candidate's chances",
           ),
       }),
-    ).min(1)
+    )
+    .min(1)
     .describe(
       "List of skill gaps in the candidate's profile along with their severity",
     ),
@@ -83,7 +85,8 @@ const interviewReportSchema = z.object({
             "List of tasks to be done on this day to follow the preparation plan, e.g. read a specific book or article, solve a set of problems, watch a video etc.",
           ),
       }),
-    ).min(5)
+    )
+    .min(5)
     .describe(
       "A day-wise preparation plan for the candidate to follow in order to prepare for the interview effectively",
     ),
@@ -94,15 +97,11 @@ const interviewReportSchema = z.object({
     ),
 });
 
-const jsonSchema = zodToJsonSchema(
-  interviewReportSchema,
-  "InterviewReport"
-);
+const jsonSchema = zodToJsonSchema(interviewReportSchema, "InterviewReport");
 
 // console.log(
 //   jsonSchema.definitions.InterviewReport
 // );
-
 
 async function generateInterviewReport({
   resume,
@@ -116,7 +115,7 @@ async function generateInterviewReport({
 `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-2.0-flash",
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -124,53 +123,71 @@ async function generateInterviewReport({
     },
   });
 
-console.log(response.text);
+  console.log(response.text);
 
-const report = JSON.parse(response.text);
+  const report = JSON.parse(response.text);
 
-const validated =
-  interviewReportSchema.parse(report);
+  const validated = interviewReportSchema.parse(report);
 
-return validated;
+  return validated;
 }
 
 async function generatePdfFromHtml(htmlContent) {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-    ],
-  });
+  let browser;
+  try {
+    const launchOptions = {
+      headless: "new",
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+      ],
+    };
 
-  const page = await browser.newPage();
+    // Try to use system Chrome if available
+    if (process.env.CHROME_PATH) {
+      launchOptions.executablePath = process.env.CHROME_PATH;
+    }
 
-  await page.setContent(htmlContent, {
-    waitUntil: "networkidle0",
-  });
+    browser = await puppeteer.launch(launchOptions);
+    const page = await browser.newPage();
 
-  const pdfBuffer = await page.pdf({
-    format: "A4",
-    margin: {
-      top: "20mm",
-      bottom: "20mm",
-      left: "15mm",
-      right: "15mm",
-    },
-  });
+    await page.setContent(htmlContent, {
+      waitUntil: "networkidle2",
+    });
 
-  await browser.close();
-  return pdfBuffer;
+    const pdfBuffer = await page.pdf({
+      format: "A4",
+      margin: {
+        top: "20mm",
+        bottom: "20mm",
+        left: "15mm",
+        right: "15mm",
+      },
+    });
+
+    await browser.close();
+    return pdfBuffer;
+  } catch (error) {
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
+    console.error("PDF generation error:", error.message);
+    throw new Error(`Failed to generate PDF: ${error.message}`);
+  }
 }
 
 async function generateResumePdf({ resume, selfDescription, jobDescription }) {
+  const resumePdfSchema = z.object({
+    html: z
+      .string()
+      .describe(
+        "The HTML content of the resume which can be converted to PDF using any library like puppeteer",
+      ),
+  });
 
-    const resumePdfSchema = z.object({
-        html: z.string().describe("The HTML content of the resume which can be converted to PDF using any library like puppeteer")
-    })
-
-    const prompt = `Generate resume for a candidate with the following details:
+  const prompt = `Generate resume for a candidate with the following details:
                         Resume: ${resume}
                         Self Description: ${selfDescription}
                         Job Description: ${jobDescription}
@@ -181,25 +198,22 @@ async function generateResumePdf({ resume, selfDescription, jobDescription }) {
                         you can highlight the content using some colors or different font styles but the overall design should be simple and professional.
                         The content should be ATS friendly, i.e. it should be easily parsable by ATS systems without losing important information.
                         The resume should not be so lengthy, it should ideally be 1-2 pages long when converted to PDF. Focus on quality rather than quantity and make sure to include all the relevant information that can increase the candidate's chances of getting an interview call for the given job description.
-                    `
+                    `;
 
-    const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: zodToJsonSchema(resumePdfSchema),
-        }
-    })
+  const response = await ai.models.generateContent({
+    model: "gemini-2.0-flash",
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: zodToJsonSchema(resumePdfSchema),
+    },
+  });
 
+  const jsonContent = JSON.parse(response.text);
 
-    const jsonContent = JSON.parse(response.text)
+  const pdfBuffer = await generatePdfFromHtml(jsonContent.html);
 
-    const pdfBuffer = await generatePdfFromHtml(jsonContent.html)
-
-    return pdfBuffer
-
+  return pdfBuffer;
 }
 
-
-module.exports = { generateInterviewReport,generateResumePdf };
+module.exports = { generateInterviewReport, generateResumePdf };
